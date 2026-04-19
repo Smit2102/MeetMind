@@ -166,14 +166,15 @@ async function startRecording(tabId, platform, url) {
     // 2. Create offscreen document if it doesn't exist
     await ensureOffscreenDocument();
 
-    // 3. Get API key from storage
-    const { assemblyaiApiKey } = await chrome.storage.local.get('assemblyaiApiKey');
+    // 3. Get API key from storage (fall back to bundled env var)
+    const { assemblyaiApiKey: storedAssemblyKey } = await chrome.storage.local.get('assemblyaiApiKey');
+    const assemblyaiApiKey = storedAssemblyKey || import.meta.env.VITE_ASSEMBLYAI_API_KEY || '';
 
     // 4. Send stream ID to offscreen document to start capture
     chrome.runtime.sendMessage({
       type: 'OFFSCREEN_START_CAPTURE',
       streamId,
-      assemblyaiApiKey: assemblyaiApiKey || '',
+      assemblyaiApiKey,
     });
 
     // 5. Create meeting record in Supabase (if keys are configured)
@@ -282,7 +283,7 @@ async function handleMeetingEnd() {
     // 7. Show completion notification
     chrome.notifications.create('meeting-processed', {
       type: 'basic',
-      iconUrl: 'icons/icon-128.png',
+      iconUrl: chrome.runtime.getURL('icons/icon-128.png'),
       title: 'MeetMind — Meeting Summary Ready',
       message: analysis?.summary?.substring(0, 100) || 'Meeting recorded and saved.',
       priority: 2,
