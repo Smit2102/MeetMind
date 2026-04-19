@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && cp manifest.json dist/manifest.json && cp offscreen.html dist/offscreen.html && cp -r public dist/public",
     "preview": "vite preview"
   },
   "dependencies": {

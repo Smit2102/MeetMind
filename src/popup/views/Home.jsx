@@ -161,7 +161,12 @@ export default function Home() {
             MeetMind
           </h1>
         </div>
-        {pendingActions > 0 && (
+        {!isRecording ? (
+          <button onClick={handleStartRecording} className="btn-primary text-xs px-3 py-1.5 flex items-center gap-1.5" style={{ background: 'linear-gradient(135deg, #ef4444, #dc2626)' }}>
+             <span className="w-2 h-2 rounded-full bg-white animate-pulse"></span>
+             Record Call
+          </button>
+        ) : pendingActions > 0 && (
           <div className="badge badge-amber">
             {pendingActions} pending {pendingActions === 1 ? 'action' : 'actions'}
           </div>
@@ -210,9 +215,9 @@ export default function Home() {
         <div className="space-y-2.5 pb-4">
           {meetings.map((meeting, index) => (
             <MeetingCard
-              key={meeting.id || index}
+              key={meeting.id || meeting.meetingId || index}
               meeting={meeting}
-              onClick={() => navigateTo('detail', meeting.id || index)}
+              onClick={() => navigateTo('detail', meeting.id || meeting.meetingId || index.toString())}
               style={{ animationDelay: `${index * 50}ms` }}
             />
           ))}

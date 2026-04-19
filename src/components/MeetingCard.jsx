@@ -2,7 +2,8 @@ import React from 'react';
 import PlatformIcon from './PlatformIcon';
 
 export default function MeetingCard({ meeting, onClick, highlight, style }) {
-  const date = new Date(meeting.started_at);
+  const date = new Date(meeting.startedAt || meeting.started_at);
+  const duration = meeting.durationMinutes || meeting.duration_minutes;
   const now = new Date();
   const diffHours = Math.floor((now - date) / 3600000);
 
@@ -59,12 +60,12 @@ export default function MeetingCard({ meeting, onClick, highlight, style }) {
 
           {/* Meta row */}
           <div className="flex items-center gap-2 mt-2">
-            {meeting.duration_minutes && (
+            {duration && (
               <span className="text-[10px] text-surface-500 flex items-center gap-1">
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                {meeting.duration_minutes} min
+                {duration} min
               </span>
             )}
             {pendingActions > 0 && (

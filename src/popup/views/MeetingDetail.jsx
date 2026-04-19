@@ -62,7 +62,7 @@ export default function MeetingDetail() {
     try {
       // Try to load from chrome.storage.local
       const { meetings: storedMeetings } = await chrome.storage.local.get('meetings');
-      const found = storedMeetings?.find((m, i) => m.id === selectedMeetingId || i === selectedMeetingId);
+      const found = storedMeetings?.find((m, i) => m.id === selectedMeetingId || m.meetingId === selectedMeetingId || i.toString() === selectedMeetingId);
 
       if (found) {
         setMeeting(found);
@@ -109,12 +109,12 @@ export default function MeetingDetail() {
   }
 
   const analysis = meeting.analysis || {};
-  const dateStr = new Date(meeting.started_at).toLocaleDateString('en-US', {
+  const dateStr = new Date(meeting.startedAt || meeting.started_at).toLocaleDateString('en-US', {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
   });
-  const timeStr = new Date(meeting.started_at).toLocaleTimeString('en-US', {
+  const timeStr = new Date(meeting.startedAt || meeting.started_at).toLocaleTimeString('en-US', {
     hour: 'numeric',
     minute: '2-digit',
   });
@@ -137,10 +137,10 @@ export default function MeetingDetail() {
           <PlatformIcon platform={meeting.platform} size={36} />
           <div className="flex-1 min-w-0">
             <h1 className="text-base font-bold text-white leading-tight truncate">
-              {meeting.title}
+              {meeting.title || 'Meeting'}
             </h1>
             <p className="text-xs text-surface-400 mt-1">
-              {dateStr} at {timeStr} · {meeting.duration_minutes} min
+              {dateStr} at {timeStr} · {meeting.durationMinutes || meeting.duration_minutes || 0} min
             </p>
           </div>
         </div>
