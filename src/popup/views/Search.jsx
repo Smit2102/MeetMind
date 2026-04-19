@@ -4,68 +4,26 @@ import SearchBar from '../../components/SearchBar';
 import MeetingCard from '../../components/MeetingCard';
 import EmptyState from '../../components/EmptyState';
 
-// Re-use mock data for search
-const ALL_MEETINGS = [
-  {
-    id: '1',
-    title: 'Sprint Planning — Q2 Features',
-    platform: 'google-meet',
-    started_at: new Date(Date.now() - 2 * 3600000).toISOString(),
-    duration_minutes: 32,
-    analysis: {
-      summary: 'Dashboard redesign and API v3 migration are the top priorities for Q2.',
-      action_items: [
-        { task: 'Create design mockups', owner: 'Alex', status: 'pending' },
-        { task: 'Write API migration guide', owner: 'Mike', status: 'pending' },
-      ],
-    },
-  },
-  {
-    id: '2',
-    title: 'Design Review — New Onboarding Flow',
-    platform: 'zoom',
-    started_at: new Date(Date.now() - 26 * 3600000).toISOString(),
-    duration_minutes: 45,
-    analysis: {
-      summary: 'Simplified onboarding step 2, added progress indicators. Wireframes updated.',
-      action_items: [
-        { task: 'Write copy for onboarding steps', owner: 'Jordan', status: 'pending' },
-      ],
-    },
-  },
-  {
-    id: '3',
-    title: 'Weekly Standup',
-    platform: 'teams',
-    started_at: new Date(Date.now() - 50 * 3600000).toISOString(),
-    duration_minutes: 15,
-    analysis: {
-      summary: 'Quick status updates. No blockers. Release on track for Friday.',
-      action_items: [],
-    },
-  },
-  {
-    id: '4',
-    title: 'Client Feedback — Acme Corp',
-    platform: 'google-meet',
-    started_at: new Date(Date.now() - 74 * 3600000).toISOString(),
-    duration_minutes: 58,
-    analysis: {
-      summary: 'Acme wants faster load times, bulk export, and custom branding.',
-      action_items: [
-        { task: 'Performance audit', owner: 'Dev Team', status: 'pending' },
-      ],
-    },
-  },
-];
-
 export default function Search() {
   const { navigateTo } = useAppContext();
   const [query, setQuery] = useState('');
+  const [allMeetings, setAllMeetings] = useState([]);
   const [results, setResults] = useState([]);
   const [hasSearched, setHasSearched] = useState(false);
 
-  const performSearch = useCallback((searchQuery) => {
+  useEffect(() => {
+    async function loadAllMeetings() {
+      try {
+        const { meetings } = await chrome.storage.local.get('meetings');
+        setAllMeetings(meetings || []);
+      } catch {
+        setAllMeetings([]);
+      }
+    }
+    loadAllMeetings();
+  }, []);
+
+  const performSearch = useCallback((searchQuery, meetings) => {
     if (!searchQuery.trim()) {
       setResults([]);
       setHasSearched(false);
@@ -73,13 +31,14 @@ export default function Search() {
     }
 
     const q = searchQuery.toLowerCase();
-    const filtered = ALL_MEETINGS.filter((m) => {
-      const titleMatch = m.title.toLowerCase().includes(q);
+    const filtered = meetings.filter((m) => {
+      const titleMatch = m.title?.toLowerCase().includes(q);
       const summaryMatch = m.analysis?.summary?.toLowerCase().includes(q);
+      const transcriptMatch = m.transcript?.toLowerCase().includes(q);
       const actionMatch = m.analysis?.action_items?.some(
-        (a) => a.task.toLowerCase().includes(q) || a.owner?.toLowerCase().includes(q)
+        (a) => a.task?.toLowerCase().includes(q) || a.owner?.toLowerCase().includes(q)
       );
-      return titleMatch || summaryMatch || actionMatch;
+      return titleMatch || summaryMatch || transcriptMatch || actionMatch;
     });
 
     setResults(filtered);
@@ -89,10 +48,10 @@ export default function Search() {
   // Debounced search
   useEffect(() => {
     const timer = setTimeout(() => {
-      performSearch(query);
+      performSearch(query, allMeetings);
     }, 300);
     return () => clearTimeout(timer);
-  }, [query, performSearch]);
+  }, [query, allMeetings, performSearch]);
 
   return (
     <div className="p-4 animate-fade-in">
@@ -131,9 +90,9 @@ export default function Search() {
             <div className="space-y-2.5">
               {results.map((meeting, index) => (
                 <MeetingCard
-                  key={meeting.id}
+                  key={meeting.id || meeting.meetingId || index}
                   meeting={meeting}
-                  onClick={() => navigateTo('detail', meeting.id)}
+                  onClick={() => navigateTo('detail', meeting.id || meeting.meetingId || index.toString())}
                   highlight={query}
                   style={{ animationDelay: `${index * 50}ms` }}
                 />

@@ -94,7 +94,15 @@ export async function analyzeMeeting(transcript, apiKey) {
     // Validate and normalize the response structure
     return {
       summary: parsed.summary || 'No summary generated.',
-      action_items: Array.isArray(parsed.action_items) ? parsed.action_items : [],
+      action_items: Array.isArray(parsed.action_items)
+        ? parsed.action_items.map((item, i) => ({
+            id: item.id || `ai_${i}`,
+            task: item.task || '',
+            owner: item.owner || '',
+            due_date: item.due_date || '',
+            status: item.status || 'pending',
+          }))
+        : [],
       decisions: Array.isArray(parsed.decisions) ? parsed.decisions : [],
       open_questions: Array.isArray(parsed.open_questions) ? parsed.open_questions : [],
     };

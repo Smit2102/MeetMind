@@ -15,7 +15,7 @@ let transcriber = null;
 
 // ─── Message Handling ────────────────────────────────────────
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   switch (message.type) {
     case 'OFFSCREEN_START_CAPTURE': {
       startCapture(message.streamId, message.assemblyaiApiKey)
@@ -61,8 +61,9 @@ async function startCapture(streamId, assemblyaiApiKey) {
     source.connect(audioContext.destination);
 
     // 5. Load and create AudioWorklet for PCM16 conversion
+    // Must use chrome.runtime.getURL — Vite inlines data: URLs which Chrome CSP blocks
     await audioContext.audioWorklet.addModule(
-      new URL('./audio-processor.js', import.meta.url).href
+      chrome.runtime.getURL('audio-processor.js')
     );
     workletNode = new AudioWorkletNode(audioContext, 'pcm16-processor');
 

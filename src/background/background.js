@@ -256,7 +256,8 @@ async function handleMeetingEnd() {
 
     // 5. Analyze with Gemini (if API key configured)
     let analysis = null;
-    const { geminiApiKey } = await chrome.storage.local.get('geminiApiKey');
+    const { geminiApiKey: storedGeminiKey } = await chrome.storage.local.get('geminiApiKey');
+    const geminiApiKey = storedGeminiKey || import.meta.env.VITE_GEMINI_API_KEY;
 
     if (geminiApiKey && fullTranscript.trim().length > 0) {
       console.log('[MeetMind] Analyzing transcript with Gemini...');
@@ -281,7 +282,7 @@ async function handleMeetingEnd() {
     // 7. Show completion notification
     chrome.notifications.create('meeting-processed', {
       type: 'basic',
-      iconUrl: 'public/icons/icon-128.png',
+      iconUrl: 'icons/icon-128.png',
       title: 'MeetMind — Meeting Summary Ready',
       message: analysis?.summary?.substring(0, 100) || 'Meeting recorded and saved.',
       priority: 2,
@@ -359,7 +360,7 @@ function showMeetingDetectedBadge() {
 function notifyMeetingDetected(tabId, platform) {
   chrome.notifications.create(`meeting-detected-${tabId}`, {
     type: 'basic',
-    iconUrl: 'public/icons/icon-128.png',
+    iconUrl: 'icons/icon-128.png',
     title: 'MeetMind — Meeting Detected',
     message: `Open MeetMind to start recording this ${formatPlatform(platform)} meeting.`,
     priority: 2,

@@ -66,7 +66,12 @@ export default function MeetingDetail() {
 
       if (found) {
         setMeeting(found);
-        setActionItems(found.analysis?.action_items || []);
+        const rawItems = found.analysis?.action_items || [];
+        setActionItems(rawItems.map((item, i) => ({
+          id: item.id || `item_${i}`,
+          status: item.status || 'pending',
+          ...item,
+        })));
       } else {
         // Use mock data
         const mock = MOCK_DETAILS[selectedMeetingId] || MOCK_DETAILS['1'];
@@ -109,15 +114,15 @@ export default function MeetingDetail() {
   }
 
   const analysis = meeting.analysis || {};
-  const dateStr = new Date(meeting.startedAt || meeting.started_at).toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  });
-  const timeStr = new Date(meeting.startedAt || meeting.started_at).toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-  });
+  const rawDate = meeting.startedAt || meeting.started_at;
+  const meetingDate = rawDate ? new Date(rawDate) : new Date();
+  const isValidDate = !isNaN(meetingDate.getTime());
+  const dateStr = isValidDate
+    ? meetingDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+    : 'Unknown date';
+  const timeStr = isValidDate
+    ? meetingDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+    : '';
 
   return (
     <div className="animate-fade-in">
@@ -140,7 +145,7 @@ export default function MeetingDetail() {
               {meeting.title || 'Meeting'}
             </h1>
             <p className="text-xs text-surface-400 mt-1">
-              {dateStr} at {timeStr} · {meeting.durationMinutes || meeting.duration_minutes || 0} min
+              {dateStr}{timeStr ? ` at ${timeStr}` : ''} · {meeting.durationMinutes || meeting.duration_minutes || 0} min
             </p>
           </div>
         </div>
