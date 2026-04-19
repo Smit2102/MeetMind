@@ -4,7 +4,7 @@ import { useAppContext } from '../App';
 export default function Settings() {
   const { user, navigateTo } = useAppContext();
   const [assemblyaiKey, setAssemblyaiKey] = useState('');
-  const [anthropicKey, setAnthropicKey] = useState('');
+  const [geminiKey, setGeminiKey] = useState('');
   const [supabaseUrl, setSupabaseUrl] = useState('');
   const [supabaseKey, setSupabaseKey] = useState('');
   const [saved, setSaved] = useState(false);
@@ -17,12 +17,12 @@ export default function Settings() {
     try {
       const data = await chrome.storage.local.get([
         'assemblyaiApiKey',
-        'anthropicApiKey',
+        'geminiApiKey',
         'supabaseUrl',
         'supabaseAnonKey',
       ]);
       setAssemblyaiKey(data.assemblyaiApiKey || '');
-      setAnthropicKey(data.anthropicApiKey || '');
+      setGeminiKey(data.geminiApiKey || '');
       setSupabaseUrl(data.supabaseUrl || '');
       setSupabaseKey(data.supabaseAnonKey || '');
     } catch {
@@ -34,7 +34,7 @@ export default function Settings() {
     try {
       await chrome.storage.local.set({
         assemblyaiApiKey: assemblyaiKey,
-        anthropicApiKey: anthropicKey,
+        geminiApiKey: geminiKey,
         supabaseUrl,
         supabaseAnonKey: supabaseKey,
       });
@@ -96,13 +96,13 @@ export default function Settings() {
         </div>
 
         <div>
-          <label className="block text-xs text-surface-400 mb-1">Anthropic API Key</label>
+          <label className="block text-xs text-surface-400 mb-1">Google Gemini API Key</label>
           <input
             type="password"
             className="input-field text-xs"
-            placeholder="Enter your Anthropic key..."
-            value={anthropicKey}
-            onChange={(e) => setAnthropicKey(e.target.value)}
+            placeholder="Enter your Gemini key..."
+            value={geminiKey}
+            onChange={(e) => setGeminiKey(e.target.value)}
           />
         </div>
 

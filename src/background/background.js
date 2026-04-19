@@ -5,7 +5,7 @@
  * 1. Detects meeting tabs (Google Meet, Zoom, Teams)
  * 2. Manages audio capture via offscreen document
  * 3. Accumulates transcripts from AssemblyAI
- * 4. Processes meetings with Claude AI on meeting end
+ * 4. Processes meetings with Gemini AI on meeting end
  * 5. Persists everything to Supabase
  */
 
@@ -254,18 +254,18 @@ async function handleMeetingEnd() {
       transcript: fullTranscript,
     };
 
-    // 5. Analyze with Claude (if API key configured)
+    // 5. Analyze with Gemini (if API key configured)
     let analysis = null;
-    const { anthropicApiKey } = await chrome.storage.local.get('anthropicApiKey');
+    const { geminiApiKey } = await chrome.storage.local.get('geminiApiKey');
 
-    if (anthropicApiKey && fullTranscript.trim().length > 0) {
-      console.log('[MeetMind] Analyzing transcript with Claude...');
+    if (geminiApiKey && fullTranscript.trim().length > 0) {
+      console.log('[MeetMind] Analyzing transcript with Gemini...');
       chrome.action.setBadgeText({ text: 'AI' });
       chrome.action.setBadgeBackgroundColor({ color: '#8b5cf6' });
 
-      // Dynamic import to avoid loading claude.js until needed
-      const { analyzeMeeting } = await import('../lib/claude.js');
-      analysis = await analyzeMeeting(fullTranscript, anthropicApiKey);
+      // Dynamic import to avoid loading gemini.js until needed
+      const { analyzeMeeting } = await import('../lib/gemini.js');
+      analysis = await analyzeMeeting(fullTranscript, geminiApiKey);
 
       meetingData.analysis = analysis;
       console.log('[MeetMind] AI analysis complete');

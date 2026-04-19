@@ -1,12 +1,11 @@
 /**
- * Claude API helper for meeting transcript analysis.
+ * Gemini API helper for meeting transcript analysis.
  * 
  * All calls are made from the background service worker to avoid
  * exposing the API key in content scripts or the popup.
  */
 
-const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
-const CLAUDE_MODEL = 'claude-sonnet-4-20250514';
+const GEMINI_MODEL = 'gemini-1.5-flash';
 
 const SYSTEM_PROMPT = `You are a meeting analyst. Given a meeting transcript, extract:
 1. A 3-5 sentence executive summary
@@ -27,15 +26,15 @@ Example format:
 }`;
 
 /**
- * Analyze a meeting transcript using Claude API.
+ * Analyze a meeting transcript using Google Gemini API.
  * 
  * @param {string} transcript - The full meeting transcript text
- * @param {string} apiKey - The Anthropic API key
+ * @param {string} apiKey - The Google Gemini API key
  * @returns {Promise<Object>} Parsed analysis with summary, action_items, decisions, open_questions
  */
 export async function analyzeMeeting(transcript, apiKey) {
   if (!apiKey) {
-    console.error('[MeetMind] No Anthropic API key provided');
+    console.error('[MeetMind] No Gemini API key provided');
     return getFallbackAnalysis('API key not configured');
   }
 
@@ -44,42 +43,46 @@ export async function analyzeMeeting(transcript, apiKey) {
     return getFallbackAnalysis('No transcript available');
   }
 
+  const URl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
+
   try {
-    const response = await fetch(CLAUDE_API_URL, {
+    const response = await fetch(URl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: CLAUDE_MODEL,
-        max_tokens: 4096,
-        system: SYSTEM_PROMPT,
-        messages: [
+        systemInstruction: {
+          parts: [{ text: SYSTEM_PROMPT }]
+        },
+        contents: [
           {
             role: 'user',
-            content: `Here is the meeting transcript to analyze:\n\n${transcript}`,
+            parts: [{ text: `Here is the meeting transcript to analyze:\n\n${transcript}` }],
           },
         ],
+        generationConfig: {
+          temperature: 0.2,
+          responseMimeType: "application/json"
+        }
       }),
     });
 
     if (!response.ok) {
       const errorBody = await response.text();
-      console.error(`[MeetMind] Claude API error ${response.status}:`, errorBody);
+      console.error(`[MeetMind] Gemini API error ${response.status}:`, errorBody);
       return getFallbackAnalysis(`API error: ${response.status}`);
     }
 
     const data = await response.json();
-    const content = data.content?.[0]?.text;
+    const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
     if (!content) {
-      console.error('[MeetMind] Empty response from Claude');
+      console.error('[MeetMind] Empty response from Gemini');
       return getFallbackAnalysis('Empty response from AI');
     }
 
-    // Parse the JSON response — Claude sometimes wraps in markdown code blocks
+    // Parse the JSON response
     const jsonStr = content
       .replace(/^```json\s*/i, '')
       .replace(/^```\s*/i, '')
