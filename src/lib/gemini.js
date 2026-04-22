@@ -3,7 +3,7 @@
  * One API key handles everything: no AssemblyAI needed.
  */
 
-const GEMINI_MODEL = 'gemini-1.5-flash';
+const GEMINI_MODEL = 'gemini-2.0-flash';
 const BASE_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}`;
 
 const ANALYSIS_PROMPT = `You are a meeting analyst. Listen to this meeting audio recording.
