@@ -6,8 +6,8 @@
  */
 
 const ASSEMBLYAI_WS_URL = 'wss://streaming.assemblyai.com/v3/ws';
-const ASSEMBLYAI_TOKEN_URL = 'https://api.assemblyai.com/v2/realtime/token';
-const MAX_RECONNECT_ATTEMPTS = 5;
+const ASSEMBLYAI_TOKEN_URL = 'https://api.assemblyai.com/v3/realtime/token';
+const MAX_RECONNECT_ATTEMPTS = 3;
 const RECONNECT_BASE_DELAY_MS = 1000;
 
 /**
@@ -31,26 +31,24 @@ export function createRealtimeTranscriber({ apiKey, onTranscript, onError, onOpe
    * Request a temporary auth token from AssemblyAI.
    */
   async function getToken() {
-    try {
-      const response = await fetch(ASSEMBLYAI_TOKEN_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: apiKey,
-        },
-        body: JSON.stringify({ expires_in: 3600 }),
-      });
+    console.log('[MeetMind] Requesting AssemblyAI token...');
+    const response = await fetch(ASSEMBLYAI_TOKEN_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: apiKey,
+      },
+      body: JSON.stringify({ expires_in: 3600 }),
+    });
 
-      if (!response.ok) {
-        throw new Error(`Token request failed: ${response.status}`);
-      }
-
-      const data = await response.json();
-      return data.token;
-    } catch (error) {
-      console.error('[MeetMind] Failed to get AssemblyAI token:', error);
-      throw error;
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`AssemblyAI token request failed: ${response.status} — ${body}`);
     }
+
+    const data = await response.json();
+    console.log('[MeetMind] AssemblyAI token obtained successfully');
+    return data.token;
   }
 
   /**
@@ -106,7 +104,7 @@ export function createRealtimeTranscriber({ apiKey, onTranscript, onError, onOpe
         }
       };
     } catch (error) {
-      console.error('[MeetMind] Failed to connect to AssemblyAI:', error);
+      console.error('[MeetMind] ❌ Failed to connect to AssemblyAI:', error.message);
       onError?.(error);
 
       // Retry connection on token failure too
