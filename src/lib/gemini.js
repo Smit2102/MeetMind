@@ -23,7 +23,7 @@ Return ONLY valid JSON with these exact keys:
 
 /**
  * Analyze a meeting audio recording using Gemini.
- * Uploads audio to Gemini Files API, then transcribes + analyzes in one call.
+ * Sends audio as inline base64 — no Files API, no quota issues.
  */
 export async function analyzeMeetingAudio(audioData, mimeType, apiKey) {
   if (!audioData || audioData.length === 0) {
@@ -31,21 +31,18 @@ export async function analyzeMeetingAudio(audioData, mimeType, apiKey) {
   }
 
   try {
-    console.log(`[MeetMind] Uploading ${(audioData.length / 1024).toFixed(0)} KB audio to Gemini Files API...`);
+    const sizeKB = (audioData.length / 1024).toFixed(0);
+    console.log(`[MeetMind] Sending ${sizeKB} KB audio inline to Gemini...`);
 
-    const fileUri = await uploadAudioFile(audioData, mimeType, apiKey);
+    const base64Audio = uint8ArrayToBase64(new Uint8Array(audioData));
 
-    console.log('[MeetMind] Audio uploaded, waiting for processing...');
-    await waitForFileActive(fileUri, apiKey);
-
-    console.log('[MeetMind] Analyzing audio with Gemini...');
     const response = await fetch(`${BASE_URL}:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{
           parts: [
-            { fileData: { mimeType, fileUri } },
+            { inlineData: { mimeType, data: base64Audio } },
             { text: ANALYSIS_PROMPT },
           ],
         }],
@@ -80,56 +77,13 @@ export async function analyzeMeetingAudio(audioData, mimeType, apiKey) {
   }
 }
 
-/**
- * Upload audio bytes to the Gemini Files API.
- */
-async function uploadAudioFile(audioData, mimeType, apiKey) {
-  const blob = new Blob([new Uint8Array(audioData)], { type: mimeType });
-
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': mimeType,
-        'X-Goog-Upload-Protocol': 'raw',
-        'X-Goog-Upload-Header-Content-Type': mimeType,
-      },
-      body: blob,
-    }
-  );
-
-  if (!response.ok) {
-    const errBody = await response.text();
-    throw new Error(`Audio upload failed: ${response.status} — ${errBody}`);
+function uint8ArrayToBase64(uint8Array) {
+  let binary = '';
+  const chunkSize = 8192;
+  for (let i = 0; i < uint8Array.length; i += chunkSize) {
+    binary += String.fromCharCode(...uint8Array.subarray(i, i + chunkSize));
   }
-
-  const data = await response.json();
-  const fileUri = data.file?.uri;
-  if (!fileUri) throw new Error('No file URI returned from upload');
-
-  return fileUri;
-}
-
-/**
- * Poll until the uploaded file is ACTIVE and ready for inference.
- */
-async function waitForFileActive(fileUri, apiKey) {
-  const fileId = fileUri.split('/').pop();
-
-  for (let i = 0; i < 15; i++) {
-    await new Promise((r) => setTimeout(r, 2000));
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/files/${fileId}?key=${apiKey}`
-    );
-    const data = await res.json();
-
-    if (data.state === 'ACTIVE') return;
-    if (data.state === 'FAILED') throw new Error('Gemini file processing failed');
-    console.log(`[MeetMind] File state: ${data.state}, waiting...`);
-  }
-
-  throw new Error('Timeout waiting for Gemini file to become active');
+  return btoa(binary);
 }
 
 function normalizeAnalysis(parsed) {
