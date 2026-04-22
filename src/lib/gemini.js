@@ -4,7 +4,7 @@
  */
 
 const GEMINI_MODEL = 'gemini-1.5-flash';
-const BASE_URL = `https://generativelanguage.googleapis.com/v1/models/${GEMINI_MODEL}`;
+const BASE_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}`;
 
 const ANALYSIS_PROMPT = `You are a meeting analyst. Listen to this meeting audio recording.
 First transcribe everything that was said (include speaker names if distinguishable).
