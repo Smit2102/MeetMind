@@ -8,6 +8,8 @@
  * 4. Persists results to chrome.storage.local
  */
 
+import { analyzeMeetingAudio } from '../lib/gemini.js';
+
 // ─── State ───────────────────────────────────────────────────
 
 let activeMeeting = null; // { tabId, meetingId, platform, url, startedAt, title }
@@ -205,7 +207,6 @@ async function handleMeetingEnd() {
       chrome.action.setBadgeText({ text: 'AI' });
       chrome.action.setBadgeBackgroundColor({ color: '#8b5cf6' });
 
-      const { analyzeMeetingAudio } = await import('../lib/gemini.js');
       const analysis = await analyzeMeetingAudio(
         audioResult.audioData,
         audioResult.mimeType,
