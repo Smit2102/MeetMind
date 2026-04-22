@@ -1,143 +1,106 @@
 /**
  * MeetMind — Offscreen Document
- * 
- * Handles audio capture and streaming in a DOM-enabled environment.
- * Receives stream IDs from the service worker, captures tab audio,
- * converts to PCM16 via AudioWorklet, and streams to AssemblyAI.
+ *
+ * Records tab audio using MediaRecorder and returns the audio blob
+ * to the background service worker when recording stops.
+ * Gemini handles both transcription and analysis from the audio file.
  */
 
-import { createRealtimeTranscriber } from '../lib/assemblyai.js';
-
 let mediaStream = null;
+let mediaRecorder = null;
+let audioChunks = [];
 let audioContext = null;
-let workletNode = null;
-let transcriber = null;
 
 // ─── Message Handling ────────────────────────────────────────
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   switch (message.type) {
     case 'OFFSCREEN_START_CAPTURE': {
-      startCapture(message.streamId, message.assemblyaiApiKey)
+      startCapture(message.streamId)
         .then(() => sendResponse({ success: true }))
         .catch((err) => {
-          console.error('[MeetMind Offscreen] Start capture failed:', err);
+          console.error('[MeetMind Offscreen] Start capture failed:', err.message);
           sendResponse({ success: false, error: err.message });
         });
       return true;
     }
 
     case 'OFFSCREEN_STOP_CAPTURE': {
-      stopCapture();
-      sendResponse({ success: true });
-      break;
+      stopCapture()
+        .then((result) => sendResponse(result))
+        .catch((err) => sendResponse({ audioData: null, error: err.message }));
+      return true;
     }
   }
 });
 
 // ─── Audio Capture ───────────────────────────────────────────
 
-async function startCapture(streamId, assemblyaiApiKey) {
-  console.log('[MeetMind Offscreen] Starting audio capture with streamId:', streamId);
+async function startCapture(streamId) {
+  console.log('[MeetMind Offscreen] Starting audio capture, streamId:', streamId);
 
-  try {
-    // 1. Get media stream from the tab
-    mediaStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        mandatory: {
-          chromeMediaSource: 'tab',
-          chromeMediaSourceId: streamId,
-        },
+  mediaStream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      mandatory: {
+        chromeMediaSource: 'tab',
+        chromeMediaSourceId: streamId,
       },
-    });
+    },
+  });
 
-    // 2. Create AudioContext at 16kHz for AssemblyAI
-    audioContext = new AudioContext({ sampleRate: 16000 });
+  // Route audio to speakers so user can still hear the meeting
+  audioContext = new AudioContext();
+  const source = audioContext.createMediaStreamSource(mediaStream);
+  source.connect(audioContext.destination);
 
-    // 3. Create source from the media stream
-    const source = audioContext.createMediaStreamSource(mediaStream);
+  const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+    ? 'audio/webm;codecs=opus'
+    : 'audio/webm';
 
-    // 4. Connect to destination so user can still hear the meeting audio
-    source.connect(audioContext.destination);
+  mediaRecorder = new MediaRecorder(mediaStream, { mimeType });
+  audioChunks = [];
 
-    // 5. Load and create AudioWorklet for PCM16 conversion
-    // Must use chrome.runtime.getURL — Vite inlines data: URLs which Chrome CSP blocks
-    await audioContext.audioWorklet.addModule(
-      chrome.runtime.getURL('audio-processor.js')
-    );
-    workletNode = new AudioWorkletNode(audioContext, 'pcm16-processor');
+  mediaRecorder.ondataavailable = (e) => {
+    if (e.data.size > 0) audioChunks.push(e.data);
+  };
 
-    // 6. Handle processed audio chunks
-    workletNode.port.onmessage = (event) => {
-      const { pcm16Data } = event.data;
-      if (transcriber && pcm16Data) {
-        transcriber.sendAudio(pcm16Data);
+  mediaRecorder.start(5000); // Chunk every 5 seconds
+  console.log('[MeetMind Offscreen] Recording started with MediaRecorder');
+}
+
+async function stopCapture() {
+  return new Promise((resolve) => {
+    if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+      cleanup();
+      resolve({ audioData: null, mimeType: null });
+      return;
+    }
+
+    mediaRecorder.onstop = async () => {
+      try {
+        const mimeType = mediaRecorder.mimeType || 'audio/webm';
+        const blob = new Blob(audioChunks, { type: mimeType });
+        const arrayBuffer = await blob.arrayBuffer();
+        const audioData = Array.from(new Uint8Array(arrayBuffer));
+
+        console.log(`[MeetMind Offscreen] Captured ${(audioData.length / 1024).toFixed(0)} KB of audio`);
+        cleanup();
+        resolve({ audioData, mimeType });
+      } catch (err) {
+        cleanup();
+        resolve({ audioData: null, error: err.message });
       }
     };
 
-    // 7. Connect source → worklet
-    source.connect(workletNode);
-
-    // 8. Start AssemblyAI real-time transcription
-    if (assemblyaiApiKey) {
-      transcriber = createRealtimeTranscriber({
-        apiKey: assemblyaiApiKey,
-        onTranscript: ({ text, isFinal }) => {
-          // Forward transcript segments to service worker
-          chrome.runtime.sendMessage({
-            type: 'TRANSCRIPT_SEGMENT',
-            text,
-            isFinal,
-          });
-        },
-        onError: (error) => {
-          console.error('[MeetMind Offscreen] AssemblyAI error:', error);
-        },
-        onOpen: () => {
-          console.log('[MeetMind Offscreen] AssemblyAI connected - streaming audio');
-        },
-        onClose: () => {
-          console.log('[MeetMind Offscreen] AssemblyAI disconnected');
-        },
-      });
-    } else {
-      console.warn('[MeetMind Offscreen] No AssemblyAI API key — audio captured but not transcribed');
-    }
-
-    console.log('[MeetMind Offscreen] Audio capture started successfully');
-  } catch (error) {
-    console.error('[MeetMind Offscreen] Failed to start audio capture:', error);
-    stopCapture();
-    throw error;
-  }
+    mediaRecorder.stop();
+  });
 }
 
-function stopCapture() {
-  console.log('[MeetMind Offscreen] Stopping audio capture');
-
-  // Stop transcription
-  if (transcriber) {
-    transcriber.close();
-    transcriber = null;
-  }
-
-  // Disconnect worklet
-  if (workletNode) {
-    workletNode.disconnect();
-    workletNode = null;
-  }
-
-  // Close audio context
-  if (audioContext) {
-    audioContext.close().catch(console.error);
-    audioContext = null;
-  }
-
-  // Stop all media tracks
-  if (mediaStream) {
-    mediaStream.getTracks().forEach((track) => track.stop());
-    mediaStream = null;
-  }
-
-  console.log('[MeetMind Offscreen] Audio capture stopped');
+function cleanup() {
+  mediaStream?.getTracks().forEach((t) => t.stop());
+  audioContext?.close().catch(() => {});
+  mediaStream = null;
+  mediaRecorder = null;
+  audioChunks = [];
+  audioContext = null;
 }

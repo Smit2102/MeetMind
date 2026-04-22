@@ -1,88 +1,71 @@
 /**
- * Gemini API helper for meeting transcript analysis.
- * 
- * All calls are made from the background service worker to avoid
- * exposing the API key in content scripts or the popup.
+ * Gemini API helpers — audio transcription + meeting analysis.
+ * One API key handles everything: no AssemblyAI needed.
  */
 
 const GEMINI_MODEL = 'gemini-1.5-flash';
+const BASE_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}`;
 
-const SYSTEM_PROMPT = `You are a meeting analyst. Given a meeting transcript, extract:
-1. A 3-5 sentence executive summary
-2. All action items with owner name and deadline if mentioned (as JSON array with keys: task, owner, due_date)
-3. Key decisions made (as JSON array of strings)
-4. Open questions that were raised but not resolved (as JSON array of strings)
+const ANALYSIS_PROMPT = `You are a meeting analyst. Listen to this meeting audio recording.
+First transcribe everything that was said (include speaker names if distinguishable).
+Then analyze the meeting.
 
-Return ONLY valid JSON with keys: summary, action_items, decisions, open_questions
-
-Example format:
+Return ONLY valid JSON with these exact keys:
 {
-  "summary": "The team discussed...",
+  "transcript": "full word-for-word transcript of the meeting",
+  "summary": "3-5 sentence executive summary of what was discussed and decided",
   "action_items": [
-    { "task": "Update the design doc", "owner": "Sarah", "due_date": "2025-01-15" }
+    { "task": "description of the task", "owner": "person responsible", "due_date": "deadline if mentioned" }
   ],
-  "decisions": ["Decided to use React for the frontend"],
-  "open_questions": ["What is the budget for Q2?"]
+  "decisions": ["decision 1", "decision 2"],
+  "open_questions": ["question 1", "question 2"]
 }`;
 
 /**
- * Analyze a meeting transcript using Google Gemini API.
- * 
- * @param {string} transcript - The full meeting transcript text
- * @param {string} apiKey - The Google Gemini API key
- * @returns {Promise<Object>} Parsed analysis with summary, action_items, decisions, open_questions
+ * Analyze a meeting audio recording using Gemini.
+ * Uploads audio to Gemini Files API, then transcribes + analyzes in one call.
  */
-export async function analyzeMeeting(transcript, apiKey) {
-  if (!apiKey) {
-    console.error('[MeetMind] No Gemini API key provided');
-    return getFallbackAnalysis('API key not configured');
+export async function analyzeMeetingAudio(audioData, mimeType, apiKey) {
+  if (!audioData || audioData.length === 0) {
+    return getFallbackAnalysis('No audio was recorded');
   }
-
-  if (!transcript || transcript.trim().length === 0) {
-    console.warn('[MeetMind] Empty transcript provided');
-    return getFallbackAnalysis('No transcript available');
-  }
-
-  const URl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
 
   try {
-    const response = await fetch(URl, {
+    console.log(`[MeetMind] Uploading ${(audioData.length / 1024).toFixed(0)} KB audio to Gemini Files API...`);
+
+    const fileUri = await uploadAudioFile(audioData, mimeType, apiKey);
+
+    console.log('[MeetMind] Audio uploaded, waiting for processing...');
+    await waitForFileActive(fileUri, apiKey);
+
+    console.log('[MeetMind] Analyzing audio with Gemini...');
+    const response = await fetch(`${BASE_URL}:generateContent?key=${apiKey}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        systemInstruction: {
-          parts: [{ text: SYSTEM_PROMPT }]
-        },
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: `Here is the meeting transcript to analyze:\n\n${transcript}` }],
-          },
-        ],
+        contents: [{
+          parts: [
+            { fileData: { mimeType, fileUri } },
+            { text: ANALYSIS_PROMPT },
+          ],
+        }],
         generationConfig: {
-          temperature: 0.2,
-          responseMimeType: "application/json"
-        }
+          temperature: 0.1,
+          responseMimeType: 'application/json',
+        },
       }),
     });
 
     if (!response.ok) {
-      const errorBody = await response.text();
-      console.error(`[MeetMind] Gemini API error ${response.status}:`, errorBody);
-      return getFallbackAnalysis(`API error: ${response.status}`);
+      const errBody = await response.text();
+      console.error(`[MeetMind] Gemini analysis error ${response.status}:`, errBody);
+      return getFallbackAnalysis(`Gemini error: ${response.status}`);
     }
 
     const data = await response.json();
     const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!content) return getFallbackAnalysis('Empty response from Gemini');
 
-    if (!content) {
-      console.error('[MeetMind] Empty response from Gemini');
-      return getFallbackAnalysis('Empty response from AI');
-    }
-
-    // Parse the JSON response
     const jsonStr = content
       .replace(/^```json\s*/i, '')
       .replace(/^```\s*/i, '')
@@ -90,34 +73,87 @@ export async function analyzeMeeting(transcript, apiKey) {
       .trim();
 
     const parsed = JSON.parse(jsonStr);
-
-    // Validate and normalize the response structure
-    return {
-      summary: parsed.summary || 'No summary generated.',
-      action_items: Array.isArray(parsed.action_items)
-        ? parsed.action_items.map((item, i) => ({
-            id: item.id || `ai_${i}`,
-            task: item.task || '',
-            owner: item.owner || '',
-            due_date: item.due_date || '',
-            status: item.status || 'pending',
-          }))
-        : [],
-      decisions: Array.isArray(parsed.decisions) ? parsed.decisions : [],
-      open_questions: Array.isArray(parsed.open_questions) ? parsed.open_questions : [],
-    };
+    return normalizeAnalysis(parsed);
   } catch (error) {
-    console.error('[MeetMind] Failed to analyze meeting:', error);
+    console.error('[MeetMind] analyzeMeetingAudio failed:', error);
     return getFallbackAnalysis(error.message);
   }
 }
 
 /**
- * Returns a graceful fallback when AI analysis fails.
+ * Upload audio bytes to the Gemini Files API.
  */
+async function uploadAudioFile(audioData, mimeType, apiKey) {
+  const blob = new Blob([new Uint8Array(audioData)], { type: mimeType });
+
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': mimeType,
+        'X-Goog-Upload-Protocol': 'raw',
+        'X-Goog-Upload-Header-Content-Type': mimeType,
+      },
+      body: blob,
+    }
+  );
+
+  if (!response.ok) {
+    const errBody = await response.text();
+    throw new Error(`Audio upload failed: ${response.status} — ${errBody}`);
+  }
+
+  const data = await response.json();
+  const fileUri = data.file?.uri;
+  if (!fileUri) throw new Error('No file URI returned from upload');
+
+  return fileUri;
+}
+
+/**
+ * Poll until the uploaded file is ACTIVE and ready for inference.
+ */
+async function waitForFileActive(fileUri, apiKey) {
+  const fileId = fileUri.split('/').pop();
+
+  for (let i = 0; i < 15; i++) {
+    await new Promise((r) => setTimeout(r, 2000));
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/files/${fileId}?key=${apiKey}`
+    );
+    const data = await res.json();
+
+    if (data.state === 'ACTIVE') return;
+    if (data.state === 'FAILED') throw new Error('Gemini file processing failed');
+    console.log(`[MeetMind] File state: ${data.state}, waiting...`);
+  }
+
+  throw new Error('Timeout waiting for Gemini file to become active');
+}
+
+function normalizeAnalysis(parsed) {
+  return {
+    transcript: parsed.transcript || '',
+    summary: parsed.summary || 'No summary generated.',
+    action_items: Array.isArray(parsed.action_items)
+      ? parsed.action_items.map((item, i) => ({
+          id: item.id || `ai_${i}`,
+          task: item.task || '',
+          owner: item.owner || '',
+          due_date: item.due_date || '',
+          status: item.status || 'pending',
+        }))
+      : [],
+    decisions: Array.isArray(parsed.decisions) ? parsed.decisions : [],
+    open_questions: Array.isArray(parsed.open_questions) ? parsed.open_questions : [],
+  };
+}
+
 function getFallbackAnalysis(reason) {
   return {
-    summary: `Meeting analysis could not be completed. Reason: ${reason}. The full transcript has been saved and you can retry analysis later.`,
+    transcript: '',
+    summary: `Meeting analysis could not be completed: ${reason}. The audio has been saved.`,
     action_items: [],
     decisions: [],
     open_questions: [],

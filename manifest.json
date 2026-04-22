@@ -16,9 +16,7 @@
     "https://meet.google.com/*",
     "https://*.zoom.us/*",
     "https://teams.microsoft.com/*",
-    "https://generativelanguage.googleapis.com/*",
-    "https://streaming.assemblyai.com/*",
-    "https://api.assemblyai.com/*"
+    "https://generativelanguage.googleapis.com/*"
   ],
   "background": {
     "service_worker": "src/background/background.js",
