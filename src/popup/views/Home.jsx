@@ -98,6 +98,21 @@ export default function Home() {
     }
   }
 
+  async function handleDeleteMeeting(meetingId) {
+    try {
+      const { meetings: stored } = await chrome.storage.local.get('meetings');
+      const updated = (stored || []).filter(
+        (m) => (m.id || m.meetingId) !== meetingId
+      );
+      await chrome.storage.local.set({ meetings: updated });
+      setMeetings((prev) => prev.filter(
+        (m, i) => (m.id || m.meetingId || i.toString()) !== meetingId
+      ));
+    } catch (error) {
+      console.error('Failed to delete meeting:', error);
+    }
+  }
+
   async function checkRecordingStatus() {
     try {
       chrome.runtime.sendMessage({ type: 'GET_RECORDING_STATUS' }, (response) => {
@@ -218,6 +233,7 @@ export default function Home() {
               key={meeting.id || meeting.meetingId || index}
               meeting={meeting}
               onClick={() => navigateTo('detail', meeting.id || meeting.meetingId || index.toString())}
+              onDelete={() => handleDeleteMeeting(meeting.id || meeting.meetingId || index.toString())}
               style={{ animationDelay: `${index * 50}ms` }}
             />
           ))}
