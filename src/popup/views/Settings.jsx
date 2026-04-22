@@ -1,9 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useAppContext } from '../App';
 
 export default function Settings() {
   const { user, navigateTo } = useAppContext();
-  const [assemblyaiKey, setAssemblyaiKey] = useState('');
   const [geminiKey, setGeminiKey] = useState('');
   const [supabaseUrl, setSupabaseUrl] = useState('');
   const [supabaseKey, setSupabaseKey] = useState('');
@@ -15,13 +14,7 @@ export default function Settings() {
 
   async function loadSettings() {
     try {
-      const data = await chrome.storage.local.get([
-        'assemblyaiApiKey',
-        'geminiApiKey',
-        'supabaseUrl',
-        'supabaseAnonKey',
-      ]);
-      setAssemblyaiKey(data.assemblyaiApiKey || '');
+      const data = await chrome.storage.local.get(['geminiApiKey', 'supabaseUrl', 'supabaseAnonKey']);
       setGeminiKey(data.geminiApiKey || '');
       setSupabaseUrl(data.supabaseUrl || '');
       setSupabaseKey(data.supabaseAnonKey || '');
@@ -33,7 +26,6 @@ export default function Settings() {
   async function handleSave() {
     try {
       await chrome.storage.local.set({
-        assemblyaiApiKey: assemblyaiKey,
         geminiApiKey: geminiKey,
         supabaseUrl,
         supabaseAnonKey: supabaseKey,
@@ -46,17 +38,8 @@ export default function Settings() {
   }
 
   function handleSignOut() {
-    // Clear all data
-    try {
-      chrome.storage.local.clear();
-    } catch {}
+    try { chrome.storage.local.clear(); } catch {}
     navigateTo('login');
-  }
-
-  function maskKey(key) {
-    if (!key) return '';
-    if (key.length <= 8) return '••••••••';
-    return key.substring(0, 4) + '•'.repeat(Math.min(key.length - 8, 20)) + key.substring(key.length - 4);
   }
 
   return (
@@ -85,17 +68,6 @@ export default function Settings() {
 
       <div className="space-y-3 mb-5">
         <div>
-          <label className="block text-xs text-surface-400 mb-1">AssemblyAI API Key</label>
-          <input
-            type="password"
-            className="input-field text-xs"
-            placeholder="Enter your AssemblyAI key..."
-            value={assemblyaiKey}
-            onChange={(e) => setAssemblyaiKey(e.target.value)}
-          />
-        </div>
-
-        <div>
           <label className="block text-xs text-surface-400 mb-1">Google Gemini API Key</label>
           <input
             type="password"
@@ -104,6 +76,7 @@ export default function Settings() {
             value={geminiKey}
             onChange={(e) => setGeminiKey(e.target.value)}
           />
+          <p className="text-[10px] text-surface-500 mt-1">Used for both transcription and meeting analysis</p>
         </div>
 
         <div>
@@ -148,10 +121,7 @@ export default function Settings() {
         Sign Out
       </button>
 
-      {/* Version */}
-      <p className="text-center text-xs text-surface-600 mt-4">
-        MeetMind v1.0.0
-      </p>
+      <p className="text-center text-xs text-surface-600 mt-4">MeetMind v1.0.0</p>
     </div>
   );
 }
